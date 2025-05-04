@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: RoostechAPI
+    env: python
+    buildCommand: ""
+    startCommand: gunicorn run:app
+    envVars:
+      - key: DATABASE_URL
+        value: mysql://usuario:clave@host:puerto/basedatos
