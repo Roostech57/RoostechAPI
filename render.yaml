@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: RoostechAPI
+    name: roostechapi
     env: python
-    buildCommand: ""
-    startCommand: gunicorn run:app
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn run:app"
     envVars:
       - key: DATABASE_URL
-        value: mysql://usuario:clave@host:puerto/basedatos
+        value: mysql+mysqlconnector://root:$hcsr04298N@srv458.hstgr.io/u932627191_roostechdb
