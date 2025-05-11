@@ -5,5 +5,5 @@ services:
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn run:app"
     envVars:
-      - key: DATABASE_URL
-        value: mysql+mysqlconnector://u932627191_root:%24hcsr04298N%2A%40srv458.hstgr.io/u932627191_roostechdb
+      - key: PYTHONUNBUFFERED
+        value: true
