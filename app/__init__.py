@@ -17,5 +17,9 @@ def create_app():
     from app.routes.factura_publica_routes import factura_publica_bp
     app.register_blueprint(factura_publica_bp)
 
+    from app.routes.producto_routes import producto_bp
+    app.register_blueprint(producto_bp)
+
     return app
+
 
