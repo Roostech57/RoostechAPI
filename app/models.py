@@ -1,59 +1,49 @@
+from flask import Blueprint, request, jsonify
 from app import db
+from app.models import Producto
 
-class Empresa(db.Model):
-    __tablename__ = 'empresa'
+producto_bp = Blueprint('producto_bp', __name__)
 
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), nullable=False)
-    nit = db.Column(db.String(20), unique=True, nullable=False)
-    direccion = db.Column(db.String(100))
-    telefono = db.Column(db.String(20))
-    email = db.Column(db.String(100))
+# Obtener todos los productos
+@producto_bp.route('/productos', methods=['GET'])
+def listar_productos():
+    productos = Producto.query.all()
+    resultado = []
+    for p in productos:
+        resultado.append({
+            "id": p.id,
+            "nombre": p.nombre,
+            "descripcion": p.descripcion,
+            "referencia": p.referencia,
+            "precio_unitario": p.precio_unitario,
+            "stock": p.stock
+        })
+    return jsonify(resultado), 200
 
-class Cliente(db.Model):
-    __tablename__ = 'clientes'
+# Crear un nuevo producto
+@producto_bp.route('/productos', methods=['POST'])
+def crear_producto():
+    data = request.get_json()
 
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), nullable=False)
-    tipo_documento = db.Column(db.String(10), nullable=False)
-    numero_documento = db.Column(db.String(30), unique=True, nullable=False)
-    direccion = db.Column(db.String(100))
-    telefono = db.Column(db.String(20))
-    email = db.Column(db.String(100))
+    if not data:
+        return jsonify({"error": "No se recibieron datos"}), 400
 
-class Producto(db.Model):
-    __tablename__ = 'productos'
+    campos_requeridos = ['nombre', 'descripcion', 'referencia', 'precio_unitario', 'stock']
+    if not all(campo in data for campo in campos_requeridos):
+        return jsonify({"error": "Faltan campos obligatorios"}), 400
 
-    id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), nullable=False)
-    descripcion = db.Column(db.String(255))
-    referencia = db.Column(db.String(50), unique=True, nullable=False)
-    precio_unitario = db.Column(db.Float, nullable=False)
-    stock = db.Column(db.Integer, default=0)
+    try:
+        nuevo_producto = Producto(
+            nombre=data['nombre'],
+            descripcion=data['descripcion'],
+            referencia=data['referencia'],
+            precio_unitario=float(data['precio_unitario']),
+            stock=int(data['stock'])
+        )
+        db.session.add(nuevo_producto)
+        db.session.commit()
 
-from datetime import datetime
-
-class Factura(db.Model):
-    __tablename__ = 'facturas'
-
-    id = db.Column(db.Integer, primary_key=True)
-    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes.id'), nullable=False)
-    fecha_emision = db.Column(db.DateTime, default=datetime.utcnow)
-    total = db.Column(db.Float, nullable=False)
-    xml_ubl = db.Column(db.Text)  # ✅ Aquí se guarda el XML como texto plano
-
-    cliente = db.relationship('Cliente', backref='facturas')
-    detalles = db.relationship('FacturaDetalle', backref='factura', cascade="all, delete-orphan")
-
-
-class FacturaDetalle(db.Model):
-    __tablename__ = 'factura_detalle'
-
-    id = db.Column(db.Integer, primary_key=True)
-    factura_id = db.Column(db.Integer, db.ForeignKey('facturas.id'), nullable=False)
-    producto_id = db.Column(db.Integer, db.ForeignKey('productos.id'), nullable=False)
-    cantidad = db.Column(db.Integer, nullable=False)
-    precio_unitario = db.Column(db.Float, nullable=False)
-    subtotal = db.Column(db.Float, nullable=False)
-
-    producto = db.relationship('Producto')
+        return jsonify({"mensaje": "Producto creado exitosamente", "producto_id": nuevo_producto.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
