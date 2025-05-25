@@ -7,66 +7,56 @@ factura_publica_bp = Blueprint('factura_publica', __name__)
 
 @factura_publica_bp.route('/facturar', methods=['POST'])
 def facturar():
-    try:
-        data = request.get_json()
-        tipo = data.get("tipo_documento")
-        cliente_data = data.get("cliente")
-        productos_data = data.get("productos")
+    data = request.get_json()
 
-        if not cliente_data or not productos_data:
-            return jsonify({"error": "Datos incompletos"}), 400
+    if not data or data.get("token") != "SECRETO123":
+        return jsonify({"error": "Token inválido o datos incompletos"}), 401
 
-        # Verificar si el cliente ya existe
-        cliente = Cliente.query.filter_by(numero_documento=cliente_data["numero_documento"]).first()
-        if not cliente:
-            cliente = Cliente(
-                nombre=cliente_data["nombre"],
-                numero_documento=cliente_data["numero_documento"],
-                tipo_documento=cliente_data.get("tipo_documento", "CC"),
-                email=cliente_data.get("email"),
-                telefono=cliente_data.get("telefono"),
-                direccion=cliente_data.get("direccion"),
-            )
-            db.session.add(cliente)
-            db.session.commit()
+    cliente_data = data.get("cliente")
+    productos_data = data.get("productos")
 
-        # Crear la factura
-        factura = Factura(cliente_id=cliente.id, total=0)
-        db.session.add(factura)
-        db.session.flush()
+    if not cliente_data or not productos_data:
+        return jsonify({"error": "Datos de cliente o productos incompletos"}), 400
 
-        total = 0
-        for item in productos_data:
-            producto = Producto.query.get(item["producto_id"])
-            if not producto:
-                return jsonify({"error": f"Producto ID {item['producto_id']} no encontrado"}), 404
-
-            cantidad = item["cantidad"]
-            subtotal = cantidad * producto.precio
-            detalle = FacturaDetalle(
-                factura_id=factura.id,
-                producto_id=producto.id,
-                cantidad=cantidad,
-                precio_unitario=producto.precio,
-                subtotal=subtotal
-            )
-            db.session.add(detalle)
-            total += subtotal
-
-        factura.total = total
+    # Buscar o crear cliente
+    cliente = Cliente.query.filter_by(numero_documento=cliente_data["numero_documento"]).first()
+    if not cliente:
+        cliente = Cliente(**cliente_data)
+        db.session.add(cliente)
         db.session.commit()
 
-        # Generar XML si aplica
-        if tipo != "recibo":
-            ruta = generar_xml_ubl(factura.id)
-        else:
-            ruta = None
+    # Calcular total y guardar factura
+    total = 0
+    detalles = []
 
-        return jsonify({
-            "mensaje": "Factura creada exitosamente",
-            "factura_id": factura.id,
-            "ruta_xml": ruta
-        })
+    for item in productos_data:
+        producto = Producto.query.get(item["producto_id"])
+        if not producto:
+            return jsonify({"error": f"Producto ID {item['producto_id']} no encontrado"}), 400
+        cantidad = item["cantidad"]
+        precio_unitario = producto.precio_unitario
+        subtotal = cantidad * precio_unitario
+        total += subtotal
+        detalle = FacturaDetalle(
+            producto_id=producto.id,
+            cantidad=cantidad,
+            precio_unitario=precio_unitario,
+            subtotal=subtotal
+        )
+        detalles.append(detalle)
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    factura = Factura(cliente_id=cliente.id, total=total)
+    factura.detalles = detalles
+    db.session.add(factura)
+    db.session.commit()
+
+    # Generar XML y actualizar
+    ruta_xml = generar_xml_ubl(factura.id)
+    factura.xml_ubl = Path(ruta_xml).read_text(encoding="utf-8") if ruta_xml else None
+    db.session.commit()
+
+    return jsonify({
+        "mensaje": "Factura creada exitosamente",
+        "factura_id": factura.id,
+        "ruta_xml": ruta_xml
+    })
