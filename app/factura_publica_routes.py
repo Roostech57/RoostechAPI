@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from app import db
 from app.models import Cliente, Producto, Factura, FacturaDetalle
 from app.services.xml_generator import generar_xml_ubl
+from pathlib import Path
 
 factura_publica_bp = Blueprint('factura_publica', __name__)
 
