@@ -1,4 +1,3 @@
-
 import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -28,5 +27,9 @@ def create_app():
 
     from app.routes.producto_routes import producto_bp
     app.register_blueprint(producto_bp)
+
+    from app.routes.factura_routes import factura_bp
+    app.register_blueprint(factura_bp)
+
 
     return app
