@@ -1,105 +1,57 @@
+
+# app/routes/cliente_routes.py
+
 from flask import Blueprint, request, jsonify
 from app import db
-from app.models import Cliente, Producto, Factura, FacturaDetalle
-from app.services.xml_generator import generar_xml_ubl
+from app.models import Cliente
 
 cliente_bp = Blueprint('cliente', __name__)
-factura_publica_bp = Blueprint('factura_publica', __name__)
 
 @cliente_bp.route('/clientes', methods=['GET'])
 def listar_clientes():
     clientes = Cliente.query.all()
-    resultado = [
-        {
-            "id": cliente.id,
-            "nombre": cliente.nombre,
-            "numero_documento": cliente.numero_documento,
-            "tipo_documento": cliente.tipo_documento,
-            "email": cliente.email,
-            "telefono": cliente.telefono,
-            "direccion": cliente.direccion,
-        } for cliente in clientes
-    ]
+    resultado = []
+    for c in clientes:
+        resultado.append({
+            "id": c.id,
+            "nombre": c.nombre,
+            "tipo_documento": c.tipo_documento,
+            "numero_documento": c.numero_documento,
+            "direccion": c.direccion,
+            "telefono": c.telefono,
+            "email": c.email
+        })
     return jsonify(resultado)
 
-@factura_publica_bp.route('/facturar', methods=['POST'])
-def facturar():
-    try:
-        data = request.get_json()
-        tipo = data.get("tipo_documento")
-        cliente_data = data.get("cliente")
-        productos_data = data.get("productos")
+@cliente_bp.route('/clientes', methods=['POST'])
+def crear_cliente():
+    data = request.get_json()
 
-        if not cliente_data or not productos_data:
-            return jsonify({"error": "Datos incompletos"}), 400
+    if not data:
+        return jsonify({"error": "Datos no proporcionados"}), 400
 
-        # Verificar si el cliente ya existe por número de documento
-        cliente = Cliente.query.filter_by(numero_documento=cliente_data["numero_documento"]).first()
-        if not cliente:
-            cliente = Cliente(
-                nombre=cliente_data["nombre"],
-                numero_documento=cliente_data["numero_documento"],
-                tipo_documento=cliente_data.get("tipo_documento", "CC"),
-                email=cliente_data.get("email"),
-                telefono=cliente_data.get("telefono"),
-                direccion=cliente_data.get("direccion"),
-            )
-            db.session.add(cliente)
-            db.session.commit()
+    campos_obligatorios = ["nombre", "tipo_documento", "numero_documento"]
+    for campo in campos_obligatorios:
+        if campo not in data:
+            return jsonify({"error": f"Falta el campo obligatorio: {campo}"}), 400
 
-        # Crear la factura
-        factura = Factura(cliente_id=cliente.id, total=0)
-        db.session.add(factura)
-        db.session.flush()
+    cliente_existente = Cliente.query.filter_by(numero_documento=data["numero_documento"]).first()
+    if cliente_existente:
+        return jsonify({"mensaje": "Cliente ya existe", "cliente_id": cliente_existente.id}), 200
 
-        total = 0
-        for item in productos_data:
-            producto = Producto.query.get(item["producto_id"])
-            if not producto:
-                return jsonify({"error": f"Producto ID {item['producto_id']} no encontrado"}), 404
+    nuevo_cliente = Cliente(
+        nombre=data["nombre"],
+        tipo_documento=data["tipo_documento"],
+        numero_documento=data["numero_documento"],
+        direccion=data.get("direccion"),
+        telefono=data.get("telefono"),
+        email=data.get("email")
+    )
 
-            cantidad = item["cantidad"]
-            subtotal = cantidad * producto.precio
-            detalle = FacturaDetalle(
-                factura_id=factura.id,
-                producto_id=producto.id,
-                cantidad=cantidad,
-                precio_unitario=producto.precio,
-                subtotal=subtotal
-            )
-            db.session.add(detalle)
-            total += subtotal
-
-        factura.total = total
-        db.session.commit()
-
-        # Generar XML si aplica
-        if tipo != "recibo":
-            ruta = generar_xml_ubl(factura.id)
-        else:
-            ruta = None
-
-        return jsonify({
-            "mensaje": "Factura creada exitosamente",
-            "factura_id": factura.id,
-            "ruta_xml": ruta
-        })
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@cliente_bp.route('/cliente/<int:id>', methods=['GET'])
-def obtener_cliente(id):
-    cliente = Cliente.query.get(id)
-    if not cliente:
-        return jsonify({"error": "Cliente no encontrado"}), 404
+    db.session.add(nuevo_cliente)
+    db.session.commit()
 
     return jsonify({
-        "id": cliente.id,
-        "nombre": cliente.nombre,
-        "tipo_documento": cliente.tipo_documento,
-        "numero_documento": cliente.numero_documento,
-        "direccion": cliente.direccion,
-        "telefono": cliente.telefono,
-        "email": cliente.email
-    })
+        "mensaje": "Cliente creado exitosamente",
+        "cliente_id": nuevo_cliente.id
+    }), 201
