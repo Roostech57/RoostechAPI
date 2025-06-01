@@ -87,3 +87,19 @@ def facturar():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@cliente_bp.route('/cliente/<int:id>', methods=['GET'])
+def obtener_cliente(id):
+    cliente = Cliente.query.get(id)
+    if not cliente:
+        return jsonify({"error": "Cliente no encontrado"}), 404
+
+    return jsonify({
+        "id": cliente.id,
+        "nombre": cliente.nombre,
+        "tipo_documento": cliente.tipo_documento,
+        "numero_documento": cliente.numero_documento,
+        "direccion": cliente.direccion,
+        "telefono": cliente.telefono,
+        "email": cliente.email
+    })
