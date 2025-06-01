@@ -1,6 +1,5 @@
 from flask import Blueprint, jsonify
-from app import db
-from app.models import Factura, FacturaDetalle, Cliente, Producto
+from app.models import Factura
 
 factura_bp = Blueprint('factura', __name__)
 
@@ -10,24 +9,43 @@ def obtener_factura(factura_id):
     if not factura:
         return jsonify({"error": "Factura no encontrada"}), 404
 
-    detalles = []
-    for detalle in factura.detalles:
-        detalles.append({
-            "producto_id": detalle.producto_id,
-            "producto_nombre": detalle.producto.nombre,
-            "cantidad": detalle.cantidad,
-            "precio_unitario": detalle.precio_unitario,
-            "subtotal": detalle.subtotal
-        })
+    detalles = [
+        {
+            "producto_id": d.producto_id,
+            "producto_nombre": d.producto.nombre,
+            "cantidad": d.cantidad,
+            "precio_unitario": d.precio_unitario,
+            "subtotal": d.subtotal
+        } for d in factura.detalles
+    ]
 
     return jsonify({
         "factura_id": factura.id,
+        "fecha_emision": factura.fecha_emision.strftime("%Y-%m-%d %H:%M:%S"),
+        "total": factura.total,
         "cliente": {
             "id": factura.cliente.id,
             "nombre": factura.cliente.nombre,
             "numero_documento": factura.cliente.numero_documento
         },
-        "fecha_emision": factura.fecha_emision.strftime("%Y-%m-%d %H:%M:%S"),
-        "total": factura.total,
         "detalles": detalles
     })
+
+@factura_bp.route('/facturas', methods=['GET'])
+def listar_facturas():
+    facturas = Factura.query.all()
+    resultado = []
+
+    for factura in facturas:
+        resultado.append({
+            "factura_id": factura.id,
+            "fecha_emision": factura.fecha_emision.strftime("%Y-%m-%d %H:%M:%S"),
+            "total": factura.total,
+            "cliente": {
+                "id": factura.cliente.id,
+                "nombre": factura.cliente.nombre,
+                "numero_documento": factura.cliente.numero_documento
+            }
+        })
+
+    return jsonify(resultado)
