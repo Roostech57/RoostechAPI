@@ -1,7 +1,9 @@
+# Forzar despliegue en Render
 from flask import Blueprint, request, jsonify
 from app import db
 from app.models import Cliente, Producto, Factura, FacturaDetalle
 from app.services.xml_generator import generar_xml_ubl
+from pathlib import Path
 
 factura_publica_bp = Blueprint('factura_publica', __name__)
 
@@ -9,64 +11,71 @@ factura_publica_bp = Blueprint('factura_publica', __name__)
 def facturar():
     try:
         data = request.get_json()
-        tipo = data.get("tipo_documento")
+        print("📌 Datos recibidos:", data)
+
+        if not data or data.get("token") != "SECRETO123":
+            print("❌ Token inválido o datos incompletos")
+            return jsonify({"error": "Token inválido o datos incompletos"}), 401
+
         cliente_data = data.get("cliente")
         productos_data = data.get("productos")
 
         if not cliente_data or not productos_data:
-            return jsonify({"error": "Datos incompletos"}), 400
+            print("❌ Datos de cliente o productos incompletos")
+            return jsonify({"error": "Datos de cliente o productos incompletos"}), 400
 
-        # Verificar si el cliente ya existe
+        # Buscar o crear cliente
         cliente = Cliente.query.filter_by(numero_documento=cliente_data["numero_documento"]).first()
+        print("🧩 Cliente recibido:", cliente_data)
         if not cliente:
-            cliente = Cliente(
-                nombre=cliente_data["nombre"],
-                numero_documento=cliente_data["numero_documento"],
-                tipo_documento=cliente_data.get("tipo_documento", "CC"),
-                email=cliente_data.get("email"),
-                telefono=cliente_data.get("telefono"),
-                direccion=cliente_data.get("direccion"),
-            )
+            print("➕ Cliente nuevo, creando...")
+            cliente = Cliente(**cliente_data)
             db.session.add(cliente)
             db.session.commit()
+        else:
+            print("✅ Cliente ya existe:", cliente.nombre)
 
-        # Crear la factura
-        factura = Factura(cliente_id=cliente.id, total=0)
-        db.session.add(factura)
-        db.session.flush()
-
+        # Calcular total y guardar factura
         total = 0
+        detalles = []
+
         for item in productos_data:
+            print("🔍 Revisando producto:", item)
             producto = Producto.query.get(item["producto_id"])
             if not producto:
-                return jsonify({"error": f"Producto ID {item['producto_id']} no encontrado"}), 404
-
+                print(f"❌ Producto ID {item['producto_id']} no encontrado")
+                return jsonify({"error": f"Producto ID {item['producto_id']} no encontrado"}), 400
             cantidad = item["cantidad"]
-            subtotal = cantidad * producto.precio
+            precio_unitario = producto.precio_unitario
+            subtotal = cantidad * precio_unitario
+            total += subtotal
             detalle = FacturaDetalle(
-                factura_id=factura.id,
                 producto_id=producto.id,
                 cantidad=cantidad,
-                precio_unitario=producto.precio,
+                precio_unitario=precio_unitario,
                 subtotal=subtotal
             )
-            db.session.add(detalle)
-            total += subtotal
+            detalles.append(detalle)
+            print(f"🧾 Producto agregado: {producto.nombre}, Cantidad: {cantidad}, Subtotal: {subtotal}")
 
-        factura.total = total
+        factura = Factura(cliente_id=cliente.id, total=total)
+        factura.detalles = detalles
+        db.session.add(factura)
+        db.session.commit()
+        print("💾 Factura creada con ID:", factura.id)
+
+        # Generar XML y actualizar
+        ruta_xml = generar_xml_ubl(factura.id)
+        factura.xml_ubl = Path(ruta_xml).read_text(encoding="utf-8") if ruta_xml else None
         db.session.commit()
 
-        # Generar XML si aplica
-        if tipo != "recibo":
-            ruta = generar_xml_ubl(factura.id)
-        else:
-            ruta = None
-
+        print("📄 XML generado y guardado:", ruta_xml)
         return jsonify({
             "mensaje": "Factura creada exitosamente",
             "factura_id": factura.id,
-            "ruta_xml": ruta
+            "ruta_xml": ruta_xml
         })
 
     except Exception as e:
+        print("🔥 Error inesperado:", str(e))
         return jsonify({"error": str(e)}), 500
