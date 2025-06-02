@@ -1,3 +1,4 @@
+# Forzar despliegue en Render
 from flask import Blueprint, request, jsonify
 from app import db
 from app.models import Cliente, Producto, Factura, FacturaDetalle
