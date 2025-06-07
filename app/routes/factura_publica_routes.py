@@ -1,23 +1,20 @@
 from flask import Blueprint, request, jsonify
-from app.models import Cliente, Producto, Factura, FacturaDetalle, db
-from app.utils import generar_xml_ubl
+from app import db
+from app.models import Cliente, Producto, Factura, FacturaDetalle
+from app.services.xml_generator import generar_xml_ubl
 from datetime import datetime
 
-factura_publica_bp = Blueprint('factura_publica_routes', __name__)
+factura_publica_bp = Blueprint('factura_publica_bp', __name__)
 
-@factura_publica_routes.route('/facturar', methods=['POST'])
+@factura_publica_bp.route('/facturar', methods=['POST'])
 def facturar():
     try:
         data = request.get_json()
         print("📌 Datos recibidos:", data)
 
-        # Verificar token
         if data.get("token") != "SECRETO123":
             return jsonify({"error": "Token inválido"}), 403
 
-        # -----------------------
-        # Procesar Cliente
-        # -----------------------
         cliente_data = data.get("cliente")
         print("🧩 Cliente recibido:", cliente_data)
 
@@ -37,16 +34,13 @@ def facturar():
         else:
             print("✅ Cliente ya existe:", cliente.nombre)
 
-        # -----------------------
-        # Crear Factura
-        # -----------------------
         factura = Factura(
             cliente_id=cliente.id,
             fecha_emision=datetime.now(),
-            total=0.0  # Se calculará después
+            total=0.0
         )
         db.session.add(factura)
-        db.session.flush()  # Obtener ID sin hacer commit aún
+        db.session.flush()
 
         total_factura = 0.0
 
@@ -55,12 +49,11 @@ def facturar():
 
             producto = Producto.query.get(item.get("producto_id"))
             if not producto:
-                # Crear producto automáticamente
                 producto = Producto(
-                    id=item.get("producto_id"),  # Mantener el ID original si es posible
+                    id=item.get("producto_id"),
                     nombre=item.get("nombre"),
                     descripcion=item.get("descripcion", ""),
-                    referencia="",  # Puedes mejorarlo si WooCommerce te da referencia
+                    referencia="",
                     precio_unitario=item.get("precio_unitario", 0.0),
                     stock=0
                 )
@@ -86,7 +79,6 @@ def facturar():
 
         print("💾 Factura creada con ID:", factura.id)
 
-        # Generar XML
         ruta_xml = generar_xml_ubl(factura)
         print("📄 XML generado y guardado:", ruta_xml)
 
