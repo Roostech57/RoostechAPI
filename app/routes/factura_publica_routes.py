@@ -3,7 +3,7 @@ from app.models import Cliente, Producto, Factura, FacturaDetalle, db
 from app.utils import generar_xml_ubl
 from datetime import datetime
 
-factura_publica_routes = Blueprint('factura_publica_routes', __name__)
+factura_publica_bp = Blueprint('factura_publica_routes', __name__)
 
 @factura_publica_routes.route('/facturar', methods=['POST'])
 def facturar():
