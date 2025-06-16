@@ -9,6 +9,7 @@ def create_app():
 
     # ✅ Configuración desde .env para base de datos
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True}
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # ✅ Opciones de motor para mantener la conexión viva

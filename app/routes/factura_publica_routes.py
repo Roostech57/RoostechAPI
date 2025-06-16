@@ -19,6 +19,8 @@ def facturar():
         print("🧩 Cliente recibido:", cliente_data)
 
         cliente = Cliente.query.filter_by(numero_documento=cliente_data.get("numero_documento")).first()
+        if not cliente_data.get("numero_documento"):
+           return jsonify({"error": "El número de documento es obligatorio"}), 400
         if not cliente:
             cliente = Cliente(
                 nombre=cliente_data.get("nombre"),
