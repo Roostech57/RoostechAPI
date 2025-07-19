@@ -1,90 +1,94 @@
-from flask import Blueprint, request, jsonify
+
+from flask import Blueprint, request, jsonify, current_app
 from app import db
 from app.models import Cliente, Producto, Factura, FacturaDetalle
 from app.services.xml_generator import generar_xml_ubl
-from datetime import datetime
+from pathlib import Path
 
-factura_publica_bp = Blueprint('factura_publica_bp', __name__)
+factura_publica_bp = Blueprint('factura_publica', __name__)
 
 @factura_publica_bp.route('/facturar', methods=['POST'])
 def facturar():
     try:
-        data = request.get_json()
-        print("📌 Datos recibidos:", data)
+        if not request.is_json:
+            return jsonify({"error": "Contenido inválido, se esperaba JSON"}), 400
 
-        if data.get("token") != "SECRETO123":
-            return jsonify({"error": "Token inválido"}), 403
+        auth_token = request.headers.get("X-ROOSTECH-TOKEN")
+        if auth_token != "SECRETO123":
+            return jsonify({"error": "Token inválido o faltante"}), 401
+
+        data = request.get_json()
+        current_app.logger.info(f"📥 Datos recibidos: {data}")
 
         cliente_data = data.get("cliente")
-        print("🧩 Cliente recibido:", cliente_data)
+        productos_data = data.get("productos")
+        tipo_factura = data.get("tipo_factura", "electronica")
 
-        cliente = Cliente.query.filter_by(numero_documento=cliente_data.get("numero_documento")).first()
+        current_app.logger.info(f"🧾 Tipo de factura: {tipo_factura}")
+
+        if not cliente_data or not productos_data:
+            return jsonify({"error": "Datos de cliente o productos incompletos"}), 400
+
+        if not cliente_data.get("numero_documento"):
+            current_app.logger.warning("⚠️ Cliente sin número de documento")
+
+        # Buscar o crear cliente
+        cliente = Cliente.query.filter_by(numero_documento=cliente_data["numero_documento"]).first()
         if not cliente:
-            cliente = Cliente(
-                nombre=cliente_data.get("nombre"),
-                tipo_documento=cliente_data.get("tipo_documento"),
-                numero_documento=cliente_data.get("numero_documento"),
-                email=cliente_data.get("email"),
-                telefono=cliente_data.get("telefono"),
-                direccion=cliente_data.get("direccion")
-            )
+            cliente = Cliente(**cliente_data)
             db.session.add(cliente)
             db.session.commit()
-            print("➕ Cliente nuevo creado:", cliente.nombre)
-        else:
-            print("✅ Cliente ya existe:", cliente.nombre)
+        current_app.logger.info(f"🧑 Cliente procesado: {cliente.nombre}")
 
-        factura = Factura(
-            cliente_id=cliente.id,
-            fecha_emision=datetime.now(),
-            total=0.0
-        )
-        db.session.add(factura)
-        db.session.flush()
+        # Procesar productos
+        total = 0
+        detalles = []
 
-        total_factura = 0.0
-
-        for item in data.get("productos", []):
-            print("🔍 Revisando producto:", item)
-
+        for item in productos_data:
+            current_app.logger.info(f"🔍 Procesando producto: {item}")
             producto = Producto.query.get(item.get("producto_id"))
             if not producto:
-                producto = Producto(
-                    id=item.get("producto_id"),
-                    nombre=item.get("nombre"),
-                    descripcion=item.get("descripcion", ""),
-                    referencia="",
-                    precio_unitario=item.get("precio_unitario", 0.0),
-                    stock=0
-                )
-                db.session.add(producto)
-                db.session.flush()
-                print("➕ Producto creado automáticamente:", producto.nombre)
-
-            cantidad = item.get("cantidad", 1)
-            subtotal = cantidad * producto.precio_unitario
+                current_app.logger.warning(f"❌ Producto ID {item.get('producto_id')} no encontrado, se omite.")
+                continue
+            cantidad = item["cantidad"]
+            precio_unitario = producto.precio_unitario
+            subtotal = cantidad * precio_unitario
+            total += subtotal
             detalle = FacturaDetalle(
-                factura_id=factura.id,
                 producto_id=producto.id,
                 cantidad=cantidad,
-                precio_unitario=producto.precio_unitario,
+                precio_unitario=precio_unitario,
                 subtotal=subtotal
             )
-            db.session.add(detalle)
-            total_factura += subtotal
-            print("🧾 Producto agregado:", producto.nombre, "Cantidad:", cantidad, "Subtotal:", subtotal)
+            detalles.append(detalle)
 
-        factura.total = total_factura
+        if not detalles:
+            return jsonify({"error": "Ningún producto válido en la factura"}), 400
+
+        factura = Factura(cliente_id=cliente.id, total=total)
+        factura.detalles = detalles
+        db.session.add(factura)
         db.session.commit()
 
-        print("💾 Factura creada con ID:", factura.id)
+        # Generar documento según tipo
+        if tipo_factura == "recibo":
+            current_app.logger.info("🧾 Generar recibo - pendiente de implementación")
+            factura.xml_ubl = "<recibo>No implementado</recibo>"
+        elif tipo_factura == "pos":
+            current_app.logger.info("🧾 Generar factura POS - pendiente de implementación")
+            factura.xml_ubl = "<pos>No implementado</pos>"
+        else:
+            ruta_xml = generar_xml_ubl(factura.id)
+            factura.xml_ubl = Path(ruta_xml).read_text(encoding="utf-8") if ruta_xml else None
 
-        ruta_xml = generar_xml_ubl(factura)
-        print("📄 XML generado y guardado:", ruta_xml)
+        db.session.commit()
 
-        return jsonify({"mensaje": "Factura generada exitosamente", "factura_id": factura.id}), 200
+        return jsonify({
+            "mensaje": "Factura creada exitosamente",
+            "factura_id": factura.id,
+            "tipo_factura": tipo_factura
+        })
 
     except Exception as e:
-        print("🔥 Error inesperado:", str(e))
-        return jsonify({"error": "Error interno del servidor"}), 500
-
+        current_app.logger.error(f"❌ Error en /facturar: {str(e)}")
+        return jsonify({"error": str(e)}), 500
