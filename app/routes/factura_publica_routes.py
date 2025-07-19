@@ -1,4 +1,3 @@
-
 from flask import Blueprint, request, jsonify, current_app
 from app import db
 from app.models import Cliente, Producto, Factura, FacturaDetalle
@@ -10,15 +9,12 @@ factura_publica_bp = Blueprint('factura_publica', __name__)
 @factura_publica_bp.route('/facturar', methods=['POST'])
 def facturar():
     try:
-        if not request.is_json:
-            return jsonify({"error": "Contenido inválido, se esperaba JSON"}), 400
-
-        auth_token = request.headers.get("X-ROOSTECH-TOKEN")
-        if auth_token != "SECRETO123":
-            return jsonify({"error": "Token inválido o faltante"}), 401
-
         data = request.get_json()
         current_app.logger.info(f"📥 Datos recibidos: {data}")
+
+        # Validación de token
+        if not data or data.get("token") != "SECRETO123":
+            return jsonify({"error": "Token inválido o datos incompletos"}), 401
 
         cliente_data = data.get("cliente")
         productos_data = data.get("productos")
@@ -45,11 +41,23 @@ def facturar():
         detalles = []
 
         for item in productos_data:
-            current_app.logger.info(f"🔍 Procesando producto: {item}")
+            current_app.logger.info(f"🔍 Procesando producto recibido: {item}")
             producto = Producto.query.get(item.get("producto_id"))
             if not producto:
-                current_app.logger.warning(f"❌ Producto ID {item.get('producto_id')} no encontrado, se omite.")
-                continue
+                current_app.logger.warning(f"❌ Producto ID {item.get('producto_id')} no encontrado, creando...")
+                try:
+                    producto = Producto(
+                        id=item.get("producto_id"),
+                        nombre=item.get("nombre"),
+                        descripcion=item.get("descripcion"),
+                        precio_unitario=item.get("precio_unitario", 0)
+                    )
+                    db.session.add(producto)
+                    db.session.commit()
+                    current_app.logger.info(f"✅ Producto creado: {producto.nombre}")
+                except Exception as e:
+                    current_app.logger.error(f"❌ Error al crear producto: {e}")
+                    continue
             cantidad = item["cantidad"]
             precio_unitario = producto.precio_unitario
             subtotal = cantidad * precio_unitario
