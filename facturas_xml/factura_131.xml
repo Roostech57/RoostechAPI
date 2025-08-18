@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Factura>
+  <ID>131</ID>
+  <Cliente>
+    <Nombre>Wilson Gallo</Nombre>
+    <Documento>79672899</Documento>
+    <Direccion>Medellín</Direccion>
+  </Cliente>
+  <Productos>
+    <Producto>
+      <Nombre>Sensor DHT11</Nombre>
+      <Cantidad>5</Cantidad>
+      <PrecioUnitario>9800</PrecioUnitario>
+      <Subtotal>49000</Subtotal>
+    </Producto>
+  </Productos>
+  <Total>49000</Total>
+</Factura>
